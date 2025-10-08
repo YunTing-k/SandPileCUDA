@@ -33,7 +33,7 @@ typedef std::shared_ptr<spdlog::logger> logger;
 
 logger create_logger();
 void config_pile_param(PileParam *p, const std::string cfg_path, const logger &sys_log);
-void config_sim_param(SimParam *p, const std::string cfg_path, const logger &sys_log);
+void config_sim_param(const PileParam *pile_p, SimParam *p, const std::string cfg_path, const logger &sys_log);
 std::string get_pile_type_name(grid_shape input);
 std::string get_frame_sequence_format_name(frame_sequence_format input);
 void platform_info(const logger &sys_log);

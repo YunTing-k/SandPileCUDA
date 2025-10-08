@@ -14,6 +14,7 @@
 // 2025/10/08     Yu Huang     1.1               Remove namespace & Adjust logger
 // 2025/10/08     Yu Huang     1.2               Add sim params
 // 2025/10/08     Yu Huang     1.3               Merge the pile iteration function
+// 2025/10/08     Yu Huang     1.4               Video output realization
 // ---------------------------------------------------------------------------------
 //
 //-FHDR//////////////////////////////////////////////////////////////////////////////
@@ -172,7 +173,7 @@ int main(int argc, char* argv[]) {
     sim_p = new SimParam;
     std::string sim_param_path;
     sim_param_path = config_path + "sim_param.json";
-    config_sim_param(sim_p, sim_param_path, sys_log);
+    config_sim_param(pile_p, sim_p, sim_param_path, sys_log);
     end = std::chrono::steady_clock::now();
     elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
     SPDLOG_LOGGER_INFO(sys_log, "Read simulation parameters done. Time used: {:.3f} ms", 1e-6 * (double)(elapsed.count()));
@@ -181,30 +182,114 @@ int main(int argc, char* argv[]) {
     SPDLOG_LOGGER_INFO(sys_log, ">> Phase[1]: Read configs and configure simulator << done. Time used: {:.3f} ms\n", 1e-6 * (double)(elapsed_o.count()));
 
     /* Phase[2]-Preparation of data I/O */
+    /* [2]-Preparation for media I/O */
+    SPDLOG_LOGGER_INFO(sys_log, "Start the preparation for media I/O");
+    begin = std::chrono::steady_clock::now();
+    AVFormatContext* video_format_ctx = get_outcontext_by_name(sim_p->video_path.c_str(), sys_log);
+    const AVCodec* video_codec = get_codec_from_id(AV_CODEC_ID_H264, sys_log);
+    /* Buffer allocate */
+    AVFrame* buff_frame = av_frame_alloc(); // buffer frame for RGB24 data
+    buff_frame->width = pile_p->width;
+    buff_frame->height = pile_p->height;
+    buff_frame->format = AV_PIX_FMT_RGB24;
+    av_frame_get_buffer(buff_frame, 0);
+    SPDLOG_LOGGER_DEBUG(sys_log, "Allocate output AVFrame done");
+    /* Create new stream */
+    AVStream* video_stream = avformat_new_stream(video_format_ctx, video_codec);
+    if (!video_stream) {
+        SPDLOG_LOGGER_ERROR(sys_log, "Could not create output stream!");
+        return -1;
+    } // video_stream->id is unique
+    SPDLOG_LOGGER_DEBUG(sys_log, "Create output stream succeed, ID: {}", video_stream->index);
+    /* Configure the output codec and stream */
+    AVCodecContext* video_code_ctx = config_out_codec_ctx(video_codec, sim_p, pile_p, sys_log);
+    ret = avcodec_open2(video_code_ctx, video_codec, nullptr);
+    if (ret < 0) {
+        if (av_strerror(ret, errbuf, sizeof(errbuf)) == 0) {
+            SPDLOG_LOGGER_ERROR(sys_log, "Open video codec failed! Error code: {}, error info: {}", ret, errbuf);
+        } else {
+            SPDLOG_LOGGER_ERROR(sys_log, "Open video codec failed! Error code: {}, error info: Unkown", ret);
+        }
+        return -1;
+    }
+    video_stream->codecpar->codec_id = AV_CODEC_ID_H264;
+    video_stream->codecpar->codec_type = AVMEDIA_TYPE_VIDEO;
+    avcodec_parameters_from_context(video_stream->codecpar, video_code_ctx);
+    SPDLOG_LOGGER_DEBUG(sys_log, "Configure the output codec and stream succeed");
+    /* SWS for RGB24 -> YUV420P */
+    SwsContext* yuv_sws_ctx = sws_getContext(
+        pile_p->width, pile_p->height, AV_PIX_FMT_RGB24,
+        pile_p->width, pile_p->height, AV_PIX_FMT_YUV420P,
+        SWS_BILINEAR, nullptr, nullptr, nullptr);
+    SPDLOG_LOGGER_DEBUG(sys_log, "Prepare SwsContext [AV_PIX_FMT_RGB24 -> AV_PIX_FMT_YUV420P] succeed");
 
+    AVFrame* video_frame = av_frame_alloc();
+    AVPacket* video_packet = av_packet_alloc();
+    video_frame->format = video_code_ctx->pix_fmt;
+    video_frame->width = video_code_ctx->width;
+    video_frame->height = video_code_ctx->height;
+    av_frame_get_buffer(video_frame, 0);
+    SPDLOG_LOGGER_DEBUG(sys_log, "Allocate output AVFrame done");
+
+    if (!(video_format_ctx->oformat->flags & AVFMT_NOFILE)) {
+        if (avio_open(&video_format_ctx->pb, sim_p->video_path.c_str(), AVIO_FLAG_WRITE) < 0) {
+            SPDLOG_LOGGER_ERROR(sys_log, "Could not open output file!");
+            return -1;
+        }
+    } else {
+        SPDLOG_LOGGER_ERROR(sys_log, "Output format context flag error!");
+        return -1;
+    }
+    ret = avformat_write_header(video_format_ctx, nullptr);
+    if (ret < 0) {
+        if (av_strerror(ret, errbuf, sizeof(errbuf)) == 0) {
+            SPDLOG_LOGGER_ERROR(sys_log, "Write header of the output file failed! Error code: {}, error info: {}", ret, errbuf);
+        } else {
+            SPDLOG_LOGGER_ERROR(sys_log, "Write header of the output file failed! Error code: {}, error info: Unkown", ret);
+        }
+        return -1;
+    } else {
+        SPDLOG_LOGGER_DEBUG(sys_log, "Write header succeed with return value: {}", ret);
+    }
+    end = std::chrono::steady_clock::now();
+    elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
+    SPDLOG_LOGGER_INFO(sys_log, "Preparation for media I/O done. Time used: {:.3f} ms\n", 1e-6 * (double)(elapsed.count()));
 
     /* Phase[3]-Preparation before simulation */
-    SPDLOG_LOGGER_INFO(sys_log, ">> Phase[2]: Preparation before simulation << start");
+    SPDLOG_LOGGER_INFO(sys_log, ">> Phase[3]: Preparation before simulation << start");
     begin_o = std::chrono::steady_clock::now();
-    int *pile_device, *pile_diff1, *pile_diff2;
-    int *pile_host;
-    unsigned long long int *count;
-    unsigned long long int count_host = 0;
+    SandPileContextHost ctx_host;
+    SandPileContextDevice ctx_device;
     bool direction = 1;
 
-    cudaMalloc(&pile_device, pile_p->width * pile_p->height * sizeof(int));
-    cudaMalloc(&pile_diff1, pile_p->width * pile_p->height * sizeof(int));
-    cudaMalloc(&pile_diff2, pile_p->width * pile_p->height * sizeof(int));
-    cudaMalloc(&count, 1 * sizeof(unsigned long long int));
-    cudaMemset(pile_device, 0, pile_p->width * pile_p->height * sizeof(int));
-    cudaMemset(pile_diff1, 0, pile_p->width * pile_p->height * sizeof(int));
-    cudaMemset(pile_diff2, 0, pile_p->width * pile_p->height * sizeof(int));
-    cudaMemset(count, 0, 1 * sizeof(unsigned long long int));
-    pile_host = new int[pile_p->width * pile_p->height];
+    ctx_host.pile_host = new int[pile_p->width * pile_p->height];
+    ctx_host.count = 0;
+    for (int i = 0; i < 6; i++) {
+        ctx_host.lut_r[i] = sim_p->lut_r[i];
+        ctx_host.lut_g[i] = sim_p->lut_g[i];
+        ctx_host.lut_b[i] = sim_p->lut_b[i];
+    }
+    prepare_rgb_mat(pile_p->height, pile_p->width, ctx_host.r_mat, ctx_host.g_mat, ctx_host.b_mat);
+    cudaMalloc(&ctx_device.pile_device, pile_p->width * pile_p->height * sizeof(int));
+    cudaMalloc(&ctx_device.pile_diff1, pile_p->width * pile_p->height * sizeof(int));
+    cudaMalloc(&ctx_device.pile_diff2, pile_p->width * pile_p->height * sizeof(int));
+    cudaMalloc(&ctx_device.count, 1 * sizeof(unsigned long long int));
+    cudaMemset(ctx_device.pile_device, 0, pile_p->width * pile_p->height * sizeof(int));
+    cudaMemset(ctx_device.pile_diff1, 0, pile_p->width * pile_p->height * sizeof(int));
+    cudaMemset(ctx_device.pile_diff2, 0, pile_p->width * pile_p->height * sizeof(int));
+    cudaMemset(ctx_device.count, 0, 1 * sizeof(unsigned long long int));
+    cudaMalloc(&ctx_device.lut_r, 6 * sizeof(int));
+    cudaMalloc(&ctx_device.lut_g, 6 * sizeof(int));
+    cudaMalloc(&ctx_device.lut_b, 6 * sizeof(int));
+    cudaMemcpy(ctx_device.lut_r, ctx_host.lut_r, 6 * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(ctx_device.lut_g, ctx_host.lut_g, 6 * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(ctx_device.lut_b, ctx_host.lut_b, 6 * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMalloc(&ctx_device.r_mat, pile_p->width * pile_p->height * sizeof(int));
+    cudaMalloc(&ctx_device.g_mat, pile_p->width * pile_p->height * sizeof(int));
+    cudaMalloc(&ctx_device.b_mat, pile_p->width * pile_p->height * sizeof(int));
 
-    call_pile_initialize(pile_p, pile_device);
-    cudaMemcpy(pile_host, pile_device, pile_p->width * pile_p->height * sizeof(int), cudaMemcpyDeviceToHost);
-    save_int2bin(pile_p, pile_host, "0.bin", sys_log);
+    call_pile_initialize(pile_p, ctx_device.pile_device);
+    cudaMemcpy(ctx_host.pile_host, ctx_device.pile_device, pile_p->width * pile_p->height * sizeof(int), cudaMemcpyDeviceToHost);
     end_o = std::chrono::steady_clock::now();
     elapsed_o = std::chrono::duration_cast<std::chrono::nanoseconds>(end_o - begin_o);
     SPDLOG_LOGGER_INFO(sys_log, ">> Phase[3]: Preparation before simulation << done. Time used: {:.3f} ms\n", 1e-6 * (double)(elapsed_o.count()));
@@ -212,46 +297,183 @@ int main(int argc, char* argv[]) {
     /* Phase[4]-Main process of simulation */
     SPDLOG_LOGGER_INFO(sys_log, ">> Phase[4]: Main process of simulation << start");
     begin_o = std::chrono::steady_clock::now();
+    begin_f = std::chrono::steady_clock::now();
+    int frame_idx = 0;
     for (int i = 0; i < sim_p->max_itr_steps; i++) {
-        begin_f = std::chrono::steady_clock::now();
         if (direction) {
-            cudaMemset(pile_diff2, 0, pile_p->width * pile_p->height * sizeof(int));
-            pile_itr(pile_p, pile_device, pile_diff1, pile_diff2, count, sys_log);
+            cudaMemset(ctx_device.pile_diff2, 0, pile_p->width * pile_p->height * sizeof(int));
+            pile_itr(pile_p, ctx_device.pile_device, ctx_device.pile_diff1, ctx_device.pile_diff2, ctx_device.count, sys_log);
             direction = !direction;
         } else {
-            cudaMemset(pile_diff1, 0, pile_p->width * pile_p->height * sizeof(int));
-            pile_itr(pile_p, pile_device, pile_diff2, pile_diff1, count, sys_log);
+            cudaMemset(ctx_device.pile_diff1, 0, pile_p->width * pile_p->height * sizeof(int));
+            pile_itr(pile_p, ctx_device.pile_device, ctx_device.pile_diff2, ctx_device.pile_diff1, ctx_device.count, sys_log);
             direction = !direction;
         }
         if ((i + 1) % sim_p->sp_rate == 0) {
+            /* simulation info */
             end_f = std::chrono::steady_clock::now();
             elapsed_f = std::chrono::duration_cast<std::chrono::nanoseconds>(end_f - begin_f);
             time += (double)(elapsed_f.count());
             SPDLOG_LOGGER_INFO(sys_log, " -- Iteration-{} done. Time used: {:.3f} ms", i + 1, 1e-6 * (double)(elapsed_f.count()));
             SPDLOG_LOGGER_INFO(sys_log, "    > Average Speed: {:.3f} itr/s. Remaining Time: {:.3f} s",
-                (i + 1) / (1e-9 * time),
-                (sim_p->max_itr_steps - i - 1) * (1e-9 * time) / (i + 1));
+                (i + 1) / (1e-9 * time), (sim_p->max_itr_steps - i - 1) * (1e-9 * time) / (i + 1));
+            /* visualization */
+            begin = std::chrono::steady_clock::now();
+            if (sim_p->visualize_cuda) {
+                call_visualize_cuda(pile_p, ctx_device);
+            } else {
+                cudaMemcpy(ctx_host.pile_host, ctx_device.pile_device, pile_p->width * pile_p->height * sizeof(int), cudaMemcpyDeviceToHost);
+                visualize_host(pile_p, ctx_host);
+            }
+            end = std::chrono::steady_clock::now();
+            elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
+            SPDLOG_LOGGER_INFO(sys_log, "    > Visualization done. Time used: {:.3f} ms", 1e-6 * (double)(elapsed.count()));
+            /* frame transformation */
+            begin = std::chrono::steady_clock::now();
+            if (sim_p->visualize_cuda) { // fetch data from device
+                cudaMemcpy(ctx_host.r_mat.data(), ctx_device.r_mat, pile_p->width * pile_p->height * sizeof(int), cudaMemcpyDeviceToHost);
+                cudaMemcpy(ctx_host.g_mat.data(), ctx_device.g_mat, pile_p->width * pile_p->height * sizeof(int), cudaMemcpyDeviceToHost);
+                cudaMemcpy(ctx_host.b_mat.data(), ctx_device.b_mat, pile_p->width * pile_p->height * sizeof(int), cudaMemcpyDeviceToHost);
+            }
+            get_rgb_frame(ctx_host.r_mat, ctx_host.g_mat, ctx_host.b_mat, buff_frame, sys_log); // R/G/B mat to AVFrame
+            end = std::chrono::steady_clock::now();
+            elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
+            SPDLOG_LOGGER_INFO(sys_log, "    > Frame transformation done. Time used: {:.3f} ms", 1e-6 * (double)(elapsed.count()));
+            /* video encoding */
+            sws_scale(yuv_sws_ctx, buff_frame->data, buff_frame->linesize, 0, pile_p->height, video_frame->data, video_frame->linesize);
+            video_frame->pts = frame_idx;
+            ret = avcodec_send_frame(video_code_ctx, video_frame);
+            if (ret == 0) {
+                // make sure all the packets are obtained, in some codec, need to send multiple frames before get one packet
+                while(avcodec_receive_packet(video_code_ctx, video_packet) == 0) {
+                    video_packet->stream_index = video_stream->index;
+                    av_packet_rescale_ts(video_packet, video_code_ctx->time_base, video_stream->time_base);
+                    av_interleaved_write_frame(video_format_ctx, video_packet);
+                    av_packet_unref(video_packet);
+                }
+                av_packet_unref(video_packet);
+            } else {
+                if (av_strerror(ret, errbuf, sizeof(errbuf)) == 0) {
+                    SPDLOG_LOGGER_ERROR(sys_log, "Could not send frame to video codec! Error code: {}, error info: {}", ret, errbuf);
+                } else {
+                    SPDLOG_LOGGER_ERROR(sys_log, "Could not send frame to video codec! Error code: {}, error info: Unkown", ret);
+                }
+                return -1;
+            }
+            end = std::chrono::steady_clock::now();
+            elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
+            SPDLOG_LOGGER_INFO(sys_log, " -- Frame transform encoding done. Time used: {:.3f} ms", 1e-6 * (double)(elapsed.count()));
+            /* frame sequence */
+
+            /* start next timer */
+            frame_idx++;
+            begin_f = std::chrono::steady_clock::now();
         }
     }
-    cudaMemcpy(pile_host, pile_device, pile_p->width * pile_p->height * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(ctx_host.pile_host, ctx_device.pile_device, pile_p->width * pile_p->height * sizeof(int), cudaMemcpyDeviceToHost);
     std::string data_file_path = sim_p->data_path + "final.bin";
-    save_int2bin(pile_p, pile_host, data_file_path.c_str(), sys_log);
-    cudaMemcpy(&count_host, count, 1 * sizeof(unsigned long long int), cudaMemcpyDeviceToHost);
-    SPDLOG_LOGGER_INFO(sys_log, "Simulation done. Sandpile collapse count: {}", count_host);
+    save_int2bin(pile_p, ctx_host.pile_host, data_file_path.c_str(), sys_log);
+    SPDLOG_LOGGER_INFO(sys_log, "Final sandpile data in bin saved in: {}", data_file_path);
+    cudaMemcpy(&ctx_host.count, ctx_device.count, 1 * sizeof(unsigned long long int), cudaMemcpyDeviceToHost);
+    SPDLOG_LOGGER_INFO(sys_log, "Simulation done. Sandpile collapse count: {}", ctx_host.count);
     end_o = std::chrono::steady_clock::now();
     elapsed_o = std::chrono::duration_cast<std::chrono::nanoseconds>(end_o - begin_o);
     SPDLOG_LOGGER_INFO(sys_log, ">> Phase[4]: Main process of simulation << done. Time used: {:.3f} ms\n", 1e-6 * (double)(elapsed_o.count()));
 
     /* Phase[5] Finish up of media I/O */
+    begin_o = std::chrono::steady_clock::now();
+    SPDLOG_LOGGER_INFO(sys_log, ">> Phase[5]: Finish up of media I/O << start");
+    /* [5]-finish up of video encoding */
+    begin = std::chrono::steady_clock::now();
+    SPDLOG_LOGGER_INFO(sys_log, "Start the finish up of video encoding");
+    // flush codec
+    ret = avcodec_send_frame(video_code_ctx, nullptr);
+    if (ret < 0) {
+        if (av_strerror(ret, errbuf, sizeof(errbuf)) == 0) {
+            SPDLOG_LOGGER_ERROR(sys_log, "Could not flush the video codec! Error code: {}, error info: {}", ret, errbuf);
+        } else {
+            SPDLOG_LOGGER_ERROR(sys_log, "Could not flush the video codec! Error code: {}, error info: Unkown", ret);
+        }
+        return -1;
+    }
+    while (ret >= 0) {
+        ret = avcodec_receive_packet(video_code_ctx, video_packet);
+        if (ret == 0) {
+            video_packet->stream_index = video_stream->index;
+            av_packet_rescale_ts(video_packet, video_code_ctx->time_base, video_stream->time_base);
+            av_interleaved_write_frame(video_format_ctx, video_packet);
+            av_packet_unref(video_packet);
+        }
+        av_packet_unref(video_packet);
+    }
+    // write trailer
+    ret = av_write_trailer(video_format_ctx);
+    if (ret < 0) {
+        if (av_strerror(ret, errbuf, sizeof(errbuf)) == 0) {
+            SPDLOG_LOGGER_ERROR(sys_log, "Can not write trailer! Error code: {}, error info: {}", ret, errbuf);
+        } else {
+            SPDLOG_LOGGER_ERROR(sys_log, "Can not write trailer! Error code: {}, error info: Unkown", ret);
+        }
+        return -1;
+    }
+    SPDLOG_LOGGER_INFO(sys_log, "Write trailer succeed with return value: {}", ret);
+    if (!(video_format_ctx->oformat->flags & AVFMT_NOFILE)) {
+        if (avio_closep(&video_format_ctx->pb) < 0) {
+            SPDLOG_LOGGER_ERROR(sys_log, "Could not close output media file!");
+        } else {
+            SPDLOG_LOGGER_INFO(sys_log, "Output media file closed");
+        }
+    } else {
+        SPDLOG_LOGGER_ERROR(sys_log, "Output format context flag error!");
+    }
+    end = std::chrono::steady_clock::now();
+    elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
+    SPDLOG_LOGGER_INFO(sys_log, "Finish up of video encoding done. Time used: {:.3f} ms\n", 1e-6 * (double)(elapsed.count()));
+    end_o = std::chrono::steady_clock::now();
+    elapsed_o = std::chrono::duration_cast<std::chrono::nanoseconds>(end_o - begin_o);
+    SPDLOG_LOGGER_INFO(sys_log, ">> Phase[5]: Finish up of media I/O << done. Time used: {:.3f} ms\n", 1e-6 * (double)(elapsed_o.count()));
 
     /* Phase[6]-Free the all necessary space */
     SPDLOG_LOGGER_INFO(sys_log, ">> Phase[6]: Free the all necessary space << start");
     begin_o = std::chrono::steady_clock::now();
-    cudaFree(pile_device);
-    cudaFree(pile_diff1);
-    cudaFree(pile_diff2);
-    cudaFree(count);
-    delete[] pile_host;
+    /* [6]-free space of FFmpeg */
+    begin = std::chrono::steady_clock::now();
+    SPDLOG_LOGGER_INFO(sys_log, "Start freeing space of FFmpeg");
+    av_frame_free(&buff_frame);
+    avformat_free_context(video_format_ctx);
+    avcodec_free_context(&video_code_ctx);
+    sws_freeContext(yuv_sws_ctx);
+    av_frame_free(&video_frame);
+    av_packet_free(&video_packet);
+    end = std::chrono::steady_clock::now();
+    elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
+    SPDLOG_LOGGER_INFO(sys_log, "Freeing space of FFmpeg done. Time used: {:.3f} ms", 1e-6 * (double)(elapsed.count()));
+
+    /* [6]-free space of CUDA */
+    begin = std::chrono::steady_clock::now();
+    SPDLOG_LOGGER_INFO(sys_log, "Start freeing space of CUDA objects");
+    cudaFree(ctx_device.pile_device);
+    cudaFree(ctx_device.pile_diff1);
+    cudaFree(ctx_device.pile_diff2);
+    cudaFree(ctx_device.count);
+    cudaFree(ctx_device.lut_r);
+    cudaFree(ctx_device.lut_g);
+    cudaFree(ctx_device.lut_b);
+    cudaFree(ctx_device.r_mat);
+    cudaFree(ctx_device.g_mat);
+    cudaFree(ctx_device.b_mat);
+    end = std::chrono::steady_clock::now();
+    elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
+    SPDLOG_LOGGER_INFO(sys_log, "Freeing space of CUDA objects done. Time used: {:.3f} ms", 1e-6 * (double)(elapsed.count()));
+
+    /* [6]-free space of other params */
+    begin = std::chrono::steady_clock::now();
+    SPDLOG_LOGGER_INFO(sys_log, "Start freeing space of other objects");
+    delete[] ctx_host.pile_host;
+    end = std::chrono::steady_clock::now();
+    elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
+    SPDLOG_LOGGER_INFO(sys_log, "Freeing space of other objects done. Time used: {:.3f} ms", 1e-6 * (double)(elapsed.count()));
+
     end_o = std::chrono::steady_clock::now();
     elapsed_o = std::chrono::duration_cast<std::chrono::nanoseconds>(end_o - begin_o);
     SPDLOG_LOGGER_INFO(sys_log, ">> Phase[6]: Free the all necessary space << done. Time used: {:.3f} ms\n", 1e-6 * (double)(elapsed_o.count()));

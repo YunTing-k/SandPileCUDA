@@ -24,6 +24,9 @@ const AVCodec* get_codec_from_stream(const AVFormatContext* in_format_ctx, int i
 const AVCodec* get_codec_from_id(AVCodecID in_codec_id, const logger &sys_log);
 AVCodecContext* prepare_codec(const AVCodec* in_codec, AVCodecParameters* in_codec_params, const logger &sys_log);
 AVFormatContext* get_outcontext_by_name(const char* format_name, const logger &sys_log);
+AVCodecContext* config_out_codec_ctx(const AVCodec* in_codec, const SimParam* sim_p, const PileParam* pile_p, const logger &sys_log);
+void prepare_rgb_mat(int height, int width, Eigen::MatrixXi &r_mat, Eigen::MatrixXi &g_mat, Eigen::MatrixXi &b_mat);
+void get_rgb_frame(const Eigen::MatrixXi &r_mat, const Eigen::MatrixXi &g_mat, const Eigen::MatrixXi &b_mat, AVFrame* frame, const logger &sys_log);
 void save_frame2ppm(AVFrame* frame, const char* file_name, const logger &sys_log);
 void save_frame2bin(AVFrame* frame, const char* file_name, const logger &sys_log);
 void save_int2bin(const PileParam *p, const int *int_mat, const char* file_name, const logger &sys_log);

@@ -12,10 +12,12 @@
 // ---------------------------------------------------------------------------------
 // 2025/03/21     Yu Huang     1.0               First implementation
 // 2025/04/09     Yu Huang     1.1               Add collapse counter
+// 2025/10/08     Yu Huang     1.2               Video output realization
 // ---------------------------------------------------------------------------------
 //
 //-FHDR//////////////////////////////////////////////////////////////////////////////
 #include <cuda.h>
+#include "../src/cuda_context.h"
 #include "../src/pile_param.h"
 
 /**
@@ -271,4 +273,64 @@ extern "C" void call_pile_itr_hex(const PileParam *p, int *cur_pile, int *diff_i
     dim3 threads_block(8, 4); // x(col) = 8 threads, y(row) = 4 threads
     
     pile_itr_hex<<<num_block, threads_block>>>(cur_pile, diff_in, diff_out, p->width, p->height, count);
+}
+
+/**
+ * Get the visualization results according to lut with cuda
+ * 
+ * 
+ * @param cur_pile pile data for initialization (row-major)
+ * @param width width of sandbox
+ * @param height height of sandbox
+ * @param lut_r lookup table of red channel
+ * @param lut_g lookup table of green channel
+ * @param lut_b lookup table of blue channel
+ * @param r_mat red channel matrix of current frame (col-major)
+ * @param g_mat green channel matrix of current frame (col-major)
+ * @param b_mat blue channel matrix of current frame (col-major)
+ * @return NULL
+ * 
+ * 
+ */
+__global__ void visualize_cuda(int *cur_pile, int width, int height,
+    int *lut_r, int *lut_g, int *lut_b,
+    int *r_mat, int *g_mat, int *b_mat) {
+    // index of threads
+    int row = blockDim.y * blockIdx.y + threadIdx.y;
+    int col = blockDim.x * blockIdx.x + threadIdx.x;
+
+    if (((row + 1) > height) || ((col + 1) > width)) return; // avoid out-of-bound access
+    int idx = cur_pile[row * width + col];
+    if (idx < 6) {
+        r_mat[col * height + row] = lut_r[idx];
+        g_mat[col * height + row] = lut_g[idx];
+        b_mat[col * height + row] = lut_b[idx];
+    } else {
+        r_mat[col * height + row] = 0;
+        g_mat[col * height + row] = 0;
+        b_mat[col * height + row] = 0;
+    }
+}
+
+/**
+ * Caller of the visualize_cuda
+ * 
+ * 
+ * @param p pointer of the param struct
+ * @param ctx_device SandPile context in the device side
+ * @return NULL
+ * 
+ * 
+ */
+extern "C" void call_visualize_cuda(const PileParam *p, SandPileContextDevice &ctx_device) {
+
+    int bk_row, bk_col;
+    bk_col = p->width / 8 + ((p->width % 8) != 0);
+    bk_row = p->height / 4 + ((p->height % 4) != 0);
+    dim3 num_block(bk_col, bk_row);
+    dim3 threads_block(8, 4); // x(col) = 8 threads, y(row) = 4 threads
+
+    visualize_cuda<<<num_block, threads_block>>>(ctx_device.pile_device, p->width, p->height,
+        ctx_device.lut_r, ctx_device.lut_g, ctx_device.lut_b,
+        ctx_device.r_mat, ctx_device.g_mat, ctx_device.b_mat);
 }

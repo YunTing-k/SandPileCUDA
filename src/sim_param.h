@@ -11,6 +11,7 @@
 // [Date]         [By]         [Version]         [Change Log]
 // ---------------------------------------------------------------------------------
 // 2025/10/08     Yu Huang     1.0               Add sim params
+// 2025/10/08     Yu Huang     1.1               Video output realization
 // ---------------------------------------------------------------------------------
 //
 //-FHDR//////////////////////////////////////////////////////////////////////////////
@@ -34,7 +35,12 @@ typedef struct SimParam {
     std::string video_path;              // path of output video
     frame_sequence_format outseq_format; // output frame sequence format
     int sp_rate;                         // sample rate for frame sequence
+    bool visualize_cuda;                 // visualize the results by CUDA
+    int lut_r[6];                        // color lookup table - R
+    int lut_g[6];                        // color lookup table - G
+    int lut_b[6];                        // color lookup table - B
     /* video codec params */
+    int fresh_rate;                      // output visualization frame rate (frame/s)
     long long bit_rate;                  // output visualization bit rate (bit/s)
     long long rc_max_rate;               // maximum bitrate (bit/s)
     long long rc_min_rate;               // minimum bitrate (bit/s)

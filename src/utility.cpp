@@ -13,6 +13,7 @@
 // 2025/03/21     Yu Huang     1.0               First implementation
 // 2025/10/08     Yu Huang     1.1               Remove namespace & Adjust logger
 // 2025/10/08     Yu Huang     1.2               Add sim params
+// 2025/10/08     Yu Huang     1.3               Video output realization
 // ---------------------------------------------------------------------------------
 //
 //-FHDR//////////////////////////////////////////////////////////////////////////////
@@ -93,6 +94,7 @@ void config_pile_param(PileParam *p, const std::string cfg_path, const logger &s
  * Config the simulation param from json file.
  * 
  * 
+ * @param pile_p pointer of the pile param struct
  * @param p pointer of the param struct
  * @param cfg_path path of the param config path
  * @param sys_log logger of the simulator
@@ -100,7 +102,7 @@ void config_pile_param(PileParam *p, const std::string cfg_path, const logger &s
  * 
  * 
  */
-void config_sim_param(SimParam *p, const std::string cfg_path, const logger &sys_log) {
+void config_sim_param(const PileParam *pile_p, SimParam *p, const std::string cfg_path, const logger &sys_log) {
     json cfg;
     std::ifstream file(cfg_path);
     if (!file.is_open()) {
@@ -125,6 +127,45 @@ void config_sim_param(SimParam *p, const std::string cfg_path, const logger &sys
         if (p->sp_rate < 1) {
             p->sp_rate = 10000;
             SPDLOG_LOGGER_WARN(sys_log, "Invalid output frame sequence sampling gap, reset to {}", p->sp_rate);
+        }
+        p->visualize_cuda = cfg.at("visualize_cuda");
+        SPDLOG_LOGGER_INFO(sys_log, " -- Visualize by CUDA: {}", p->visualize_cuda ? "True" : "False");
+        for (int i = 0; i < 6; i++) {
+            p->lut_r[i] = 0;
+            p->lut_g[i] = 0;
+            p->lut_b[i] = 0;
+        }
+        switch (pile_p->shape) {
+            case grid_shape::TRIANGLE:
+                for (int i = 0; i < 3; i++) {
+                    p->lut_r[i] = cfg.at("lut_r1")[i];
+                    p->lut_g[i] = cfg.at("lut_g1")[i];
+                    p->lut_b[i] = cfg.at("lut_b1")[i];
+                }
+                break;
+            case grid_shape::QUADRILATERAL:
+                for (int i = 0; i < 4; i++) {
+                    p->lut_r[i] = cfg.at("lut_r2")[i];
+                    p->lut_g[i] = cfg.at("lut_g2")[i];
+                    p->lut_b[i] = cfg.at("lut_b2")[i];
+                }
+                break; 
+            case grid_shape::HEXAGON:
+                for (int i = 0; i < 6; i++) {
+                    p->lut_r[i] = cfg.at("lut_r3")[i];
+                    p->lut_g[i] = cfg.at("lut_g3")[i];
+                    p->lut_b[i] = cfg.at("lut_b3")[i];
+                }
+                break;
+            default:
+                SPDLOG_LOGGER_ERROR(sys_log, "Invalid pile type!");
+                throw std::runtime_error("Invalid pile type");
+        }
+        p->fresh_rate = cfg.at("fresh_rate");
+        SPDLOG_LOGGER_INFO(sys_log, " -- Output video frame rate: {} frame/s", p->fresh_rate);
+        if (p->fresh_rate < 1) {
+            p->fresh_rate = 60;
+            SPDLOG_LOGGER_WARN(sys_log, "Invalid output video frame rate, reset to {} frame/s", p->fresh_rate);
         }
         p->bit_rate = cfg.at("bit_rate").get<long long>();
         SPDLOG_LOGGER_INFO(sys_log, " -- Output visualization bit rate: {} (bit/s)", p->bit_rate);

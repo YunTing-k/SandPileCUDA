@@ -4,6 +4,7 @@
 /__pycache__
 /logs/*.txt
 /scripts/
-*.mp4
+/data/*
+/video/*
 *.bin
 *.exe

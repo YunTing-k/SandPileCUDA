@@ -217,7 +217,7 @@ void save_frame2bin(AVFrame* frame, const char* file_name, const logger &sys_log
  * 
  * 
  */
-void save_int2bin(const PARAM *p, const int *int_mat, const char* file_name, const logger &sys_log) {
+void save_int2bin(const PileParam *p, const int *int_mat, const char* file_name, const logger &sys_log) {
     unsigned int element_num = p->width * p->height;
     FILE* file = fopen(file_name, "wb");
     if (!file) {

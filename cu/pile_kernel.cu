@@ -16,7 +16,7 @@
 //
 //-FHDR//////////////////////////////////////////////////////////////////////////////
 #include <cuda.h>
-#include "../src/param.h"
+#include "../src/pile_param.h"
 
 /**
  * Initialize the pile
@@ -47,7 +47,7 @@ __global__ void pile_initialize(const int idx, const int sand_num, int *cur_pile
  * 
  * 
  */
-extern "C" void call_pile_initialize(const PARAM *p, int *cur_pile) {
+extern "C" void call_pile_initialize(const PileParam *p, int *cur_pile) {
     int idx = p->width * (p->height / 2 - 1) + p->width / 2 - 1;
     pile_initialize<<<1, 1>>>(idx, p->ini_sand_num, cur_pile);
 }
@@ -111,7 +111,7 @@ __global__ void pile_itr_tri(int *cur_pile, int *diff_in, int *diff_out, int wid
  * 
  * 
  */
-extern "C" void call_pile_itr_tri(const PARAM *p, int *cur_pile, int *diff_in, int *diff_out, unsigned long long int *count) {
+extern "C" void call_pile_itr_tri(const PileParam *p, int *cur_pile, int *diff_in, int *diff_out, unsigned long long int *count) {
 
     int bk_row, bk_col;
     bk_col = p->width / 8;
@@ -172,7 +172,7 @@ __global__ void pile_itr_quad(int *cur_pile, int *diff_in, int *diff_out, int wi
  * 
  * 
  */
-extern "C" void call_pile_itr_quad(const PARAM *p, int *cur_pile, int *diff_in, int *diff_out, unsigned long long int *count) {
+extern "C" void call_pile_itr_quad(const PileParam *p, int *cur_pile, int *diff_in, int *diff_out, unsigned long long int *count) {
 
     int bk_row, bk_col;
     bk_col = p->width / 8;
@@ -259,7 +259,7 @@ __global__ void pile_itr_hex(int *cur_pile, int *diff_in, int *diff_out, int wid
  * 
  * 
  */
-extern "C" void call_pile_itr_hex(const PARAM *p, int *cur_pile, int *diff_in, int *diff_out, unsigned long long int *count) {
+extern "C" void call_pile_itr_hex(const PileParam *p, int *cur_pile, int *diff_in, int *diff_out, unsigned long long int *count) {
 
     int bk_row, bk_col;
     bk_col = p->width / 8;

@@ -7,6 +7,9 @@ extern "C" {
     #include <libswscale/swscale.h>
     #include <libavutil/imgutils.h>
     #include <libavutil/opt.h>
+    #include <libavutil/error.h>
+    #include <libavfilter/buffersrc.h>
+    #include <libavfilter/buffersink.h>
 }
 #include <iostream>
 #include <Eigen/Eigen>
@@ -23,5 +26,5 @@ AVCodecContext* prepare_codec(const AVCodec* in_codec, AVCodecParameters* in_cod
 AVFormatContext* get_outcontext_by_name(const char* format_name, const logger &sys_log);
 void save_frame2ppm(AVFrame* frame, const char* file_name, const logger &sys_log);
 void save_frame2bin(AVFrame* frame, const char* file_name, const logger &sys_log);
-void save_int2bin(const PARAM *p, const int *int_mat, const char* file_name, const logger &sys_log);
+void save_int2bin(const PileParam *p, const int *int_mat, const char* file_name, const logger &sys_log);
 #endif

@@ -14,8 +14,8 @@
 // ---------------------------------------------------------------------------------
 //
 //-FHDR//////////////////////////////////////////////////////////////////////////////
-#ifndef PARAM_H
-#define PARAM_H
+#ifndef PILEPARAM_H
+#define PILEPARAM_H
 
 /* Pile grid shape */
 enum grid_shape {
@@ -25,15 +25,11 @@ enum grid_shape {
 };
 
 /* Struct of parameters */
-typedef struct PARAM {
+typedef struct PileParam {
     grid_shape shape;     // grid shape
 
     int width;            // sandbox width
     int height;           // sandbox height
-    int ini_sand_num;     // initial sand num
-    int max_itr_steps;    // max iteration steps
-
-    int update_steps;     // interval of process update
-    int sp_rate;          // sample rate for frame sequence
-} PARAM;
+    int ini_sand_num;     // initial sand num on center cell
+} PileParam;
 #endif

@@ -1,6 +1,0 @@
-{
-    "max_itr_steps": 7,
-    "data_path": "./data/",
-    "update_steps": 10000,
-    "sp_rate": 100
-}

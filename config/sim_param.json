@@ -1,0 +1,14 @@
+{
+    "max_itr_steps": 20000,
+    "data_path": "C:/Users/12416/Desktop/C++File/Project/SandPile/data/",
+    "video_path": "C:/Users/12416/Desktop/C++File/Project/SandPile/video/output.mp4",
+    "outseq_format": 1,
+    "sp_rate": 10000,
+    "bit_rate": 100000000,
+    "rc_max_rate": 100000000,
+    "rc_min_rate": 100000000,
+    "rc_buffer_size": 100000000,
+    "gop_size": 10,
+    "max_b_frames": 0,
+    "thread_count": 0
+}

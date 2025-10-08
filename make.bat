@@ -49,17 +49,19 @@ set NLOHMANNJSON_INCLUDE=C:\Users\12416\Desktop\C++File\Libs\nlohmannjson\single
 set FFMPEG_INCLUDE=C:\Users\12416\Desktop\C++File\Libs\ffmpeg\include
 set FFMPEG_LIB=C:\Users\12416\Desktop\C++File\Libs\ffmpeg\lib
 set EIGEN_INCLUDE=C:\Users\12416\Desktop\C++File\Libs\eigen
+set MIMALLOC_INCLUDE=C:\Users\12416\Desktop\C++File\Libs\mimalloc\include
+set MIMALLOC_LIB=C:\Users\12416\Desktop\C++File\Libs\mimalloc\out\msvc-x64\Release
 set CUDA_INCLUDE=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.3\include
 set CUDA_LIB=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.3\lib\x64
 
 :cuda_build
     echo cl cuda build start
     if "%2" == "1" (
-        set C_FLAG=/EHsc /utf-8 %CL_L_FLAGr% /DNDEBUG /GL /arch:AVX2 /Ox /openmp /DUSE_CUDA /DSPDLOG_COMPILED_LIB
+        set C_FLAG=/EHsc /utf-8 %CL_L_FLAGr% /DNDEBUG /GL /arch:AVX2 /Ox /openmp /DSPDLOG_COMPILED_LIB /DUSE_MIMALLOC /DMI_OVERRIDE=ON
         set NVCC_FLAG=%CL_L_FLAGr%
         echo [make]: Build mode is [Release]
     ) else (
-        set C_FLAG=/EHsc /utf-8 %CL_L_FLAGd% /O2 /openmp /DUSE_CUDA /DSPDLOG_COMPILED_LIB
+        set C_FLAG=/EHsc /utf-8 %CL_L_FLAGd% /O2 /openmp /DSPDLOG_COMPILED_LIB /DUSE_MIMALLOC /DMI_OVERRIDE=ON
         set NVCC_FLAG=%CL_L_FLAGd%
         echo [make]: Build mode is [Debug]
     )
@@ -67,8 +69,9 @@ set CUDA_LIB=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.3\lib\x64
     echo cuda build done
 
     cl /MP%COMPILE_THD_NUM% %C_FLAG% %CPP_SOURCE_FILE% %CFLAG% pile_kernel.obj /Fe:"%OUTPUT_NAME%" ^
-    /I"%SPDLOG_INCLUDE%" /I"%NLOHMANNJSON_INCLUDE%" /I"%FFMPEG_INCLUDE%" /I"%EIGEN_INCLUDE%" /I"%CUDA_INCLUDE%" ^
-    /link -libpath:"%SPDLOG_LIB%" spdlog.lib ^
+    /I"%MIMALLOC_INCLUDE%" /I"%SPDLOG_INCLUDE%" /I"%NLOHMANNJSON_INCLUDE%" /I"%FFMPEG_INCLUDE%" /I"%EIGEN_INCLUDE%" /I"%CUDA_INCLUDE%" ^
+    /link -libpath:"%MIMALLOC_LIB%" mimalloc.dll.lib ^
+    -libpath:"%SPDLOG_LIB%" spdlog.lib ^
     -libpath:"%FFMPEG_LIB%" avcodec.lib avdevice.lib avfilter.lib avformat.lib avutil.lib swresample.lib swscale.lib ^
     -libpath:"%CUDA_LIB%" %CUDA_LIB_FILE%
     echo cl cuda build done

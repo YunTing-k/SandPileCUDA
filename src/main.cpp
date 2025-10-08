@@ -15,6 +15,7 @@
 // 2025/10/08     Yu Huang     1.2               Add sim params
 // 2025/10/08     Yu Huang     1.3               Merge the pile iteration function
 // 2025/10/08     Yu Huang     1.4               Video output realization
+// 2025/10/08     Yu Huang     1.5               Image output realization
 // ---------------------------------------------------------------------------------
 //
 //-FHDR//////////////////////////////////////////////////////////////////////////////
@@ -182,8 +183,9 @@ int main(int argc, char* argv[]) {
     SPDLOG_LOGGER_INFO(sys_log, ">> Phase[1]: Read configs and configure simulator << done. Time used: {:.3f} ms\n", 1e-6 * (double)(elapsed_o.count()));
 
     /* Phase[2]-Preparation of data I/O */
-    /* [2]-Preparation for media I/O */
-    SPDLOG_LOGGER_INFO(sys_log, "Start the preparation for media I/O");
+    SPDLOG_LOGGER_INFO(sys_log, ">> Phase[2]: Preparation for media I/O << start");
+    begin_o = std::chrono::steady_clock::now();
+    /* [2]-Preparation for output video */
     begin = std::chrono::steady_clock::now();
     AVFormatContext* video_format_ctx = get_outcontext_by_name(sim_p->video_path.c_str(), sys_log);
     const AVCodec* video_codec = get_codec_from_id(AV_CODEC_ID_H264, sys_log);
@@ -253,7 +255,88 @@ int main(int argc, char* argv[]) {
     }
     end = std::chrono::steady_clock::now();
     elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
-    SPDLOG_LOGGER_INFO(sys_log, "Preparation for media I/O done. Time used: {:.3f} ms\n", 1e-6 * (double)(elapsed.count()));
+    SPDLOG_LOGGER_INFO(sys_log, "Preparation for output video done. Time used: {:.3f} ms\n", 1e-6 * (double)(elapsed.count()));
+
+    /* [2]-output frame sequence codec and context */
+    begin = std::chrono::steady_clock::now();
+    int outframe_seq_idx = 0; // output frame sequence index during visualization
+    std::string outseq_file_name;
+    std::string outseq_fmt;
+    AVCodecContext* outseq_code_ctx;
+    AVCodecID outseq_codec_id;
+    AVPixelFormat outseq_pix_format;
+    switch (sim_p->outseq_format) {
+        case SEQUENCE_JPEG:
+            outseq_codec_id = AV_CODEC_ID_MJPEG;
+            outseq_pix_format = AV_PIX_FMT_YUVJ420P;
+            outseq_fmt = ".jpg";
+            SPDLOG_LOGGER_WARN(sys_log, "Output frame sequence: JPEG format may suffer from obvious loss in encoding");
+            break;
+        case SEQUENCE_PNG:
+            outseq_codec_id = AV_CODEC_ID_PNG;
+            outseq_pix_format = AV_PIX_FMT_RGB24;
+            outseq_fmt = ".png";
+            break;
+        case SEQUENCE_TIFF:
+            outseq_codec_id = AV_CODEC_ID_TIFF;
+            outseq_pix_format = AV_PIX_FMT_RGB24;
+            outseq_fmt = ".tiff";
+            break;
+        case SEQUENCE_BMP:
+            outseq_codec_id = AV_CODEC_ID_BMP;
+            outseq_pix_format = AV_PIX_FMT_BGR24;
+            outseq_fmt = ".bmp";
+            break;
+        case SEQUENCE_JPEG2000:
+            outseq_codec_id = AV_CODEC_ID_JPEG2000;
+            outseq_pix_format = AV_PIX_FMT_RGB24;
+            outseq_fmt = ".jp2";
+            break;
+        default:
+            SPDLOG_LOGGER_ERROR(sys_log, "Invalid frame sequence format!");
+            return -1;
+    }
+    const AVCodec* outseq_codec = get_codec_from_id(outseq_codec_id, sys_log);
+    outseq_code_ctx = avcodec_alloc_context3(outseq_codec);
+    outseq_code_ctx->width = pile_p->width;
+    outseq_code_ctx->height = pile_p->height;
+    outseq_code_ctx->time_base.num = 1;
+    outseq_code_ctx->time_base.den = 1;
+    outseq_code_ctx->thread_count = sim_p->thread_count;
+    outseq_code_ctx->pix_fmt = outseq_pix_format;
+    if (avcodec_open2(outseq_code_ctx, outseq_codec, nullptr) < 0) {
+        SPDLOG_LOGGER_ERROR(sys_log, "Could not open output frame sequence codec!");
+        return -1;
+    }
+    SPDLOG_LOGGER_DEBUG(sys_log, "Get output frame sequence codec and allocate context done");
+
+    SwsContext* outseq_sws_ctx;
+    AVFrame* outseq_frame;
+    if (outseq_pix_format != AV_PIX_FMT_RGB24) {
+        outseq_sws_ctx = sws_getContext(
+        pile_p->width, pile_p->height, AV_PIX_FMT_RGB24,
+        pile_p->width, pile_p->height, outseq_pix_format,
+        SWS_BILINEAR, nullptr, nullptr, nullptr);
+        SPDLOG_LOGGER_DEBUG(sys_log, "Prepare SwsContext [AV_PIX_FMT_RGB24 -> {}] succeed", av_get_pix_fmt_name(outseq_pix_format));
+
+        outseq_frame = av_frame_alloc();
+        outseq_frame->width = pile_p->width;
+        outseq_frame->height = pile_p->height;
+        outseq_frame->format = outseq_pix_format;
+        av_frame_get_buffer(outseq_frame, 0);
+        SPDLOG_LOGGER_DEBUG(sys_log, "Allocate output frame sequence frame done");
+    }
+
+    AVPacket* outseq_packet = av_packet_alloc();
+    int outseq_buff_size = av_image_get_buffer_size(outseq_pix_format, pile_p->width, pile_p->height, 1);
+    uint8_t* outseq_buffer = (uint8_t*)av_malloc(outseq_buff_size);
+    SPDLOG_LOGGER_DEBUG(sys_log, "Allocate output frame sequence buffer done");
+    end = std::chrono::steady_clock::now();
+    elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
+    SPDLOG_LOGGER_INFO(sys_log, "Preparation for output frame sequence done. Time used: {:.3f} ms", 1e-6 * (double)(elapsed.count()));
+    end_o = std::chrono::steady_clock::now();
+    elapsed_o = std::chrono::duration_cast<std::chrono::nanoseconds>(end_o - begin_o);
+    SPDLOG_LOGGER_INFO(sys_log, ">> Phase[2]: Preparation for media I/O << done. Time used: {:.3f} ms\n", 1e-6 * (double)(elapsed_o.count()));
 
     /* Phase[3]-Preparation before simulation */
     SPDLOG_LOGGER_INFO(sys_log, ">> Phase[3]: Preparation before simulation << start");
@@ -315,8 +398,9 @@ int main(int argc, char* argv[]) {
             elapsed_f = std::chrono::duration_cast<std::chrono::nanoseconds>(end_f - begin_f);
             time += (double)(elapsed_f.count());
             SPDLOG_LOGGER_INFO(sys_log, " -- Iteration-{} done. Time used: {:.3f} ms", i + 1, 1e-6 * (double)(elapsed_f.count()));
-            SPDLOG_LOGGER_INFO(sys_log, "    > Average Speed: {:.3f} itr/s. Remaining Time: {:.3f} s",
+            SPDLOG_LOGGER_INFO(sys_log, "    > Average Speed: {:.3f} itr/s. Remaining Time(simulation only): {:.3f} s",
                 (i + 1) / (1e-9 * time), (sim_p->max_itr_steps - i - 1) * (1e-9 * time) / (i + 1));
+
             /* visualization */
             begin = std::chrono::steady_clock::now();
             if (sim_p->visualize_cuda) {
@@ -328,6 +412,7 @@ int main(int argc, char* argv[]) {
             end = std::chrono::steady_clock::now();
             elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
             SPDLOG_LOGGER_INFO(sys_log, "    > Visualization done. Time used: {:.3f} ms", 1e-6 * (double)(elapsed.count()));
+
             /* frame transformation */
             begin = std::chrono::steady_clock::now();
             if (sim_p->visualize_cuda) { // fetch data from device
@@ -339,6 +424,7 @@ int main(int argc, char* argv[]) {
             end = std::chrono::steady_clock::now();
             elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
             SPDLOG_LOGGER_INFO(sys_log, "    > Frame transformation done. Time used: {:.3f} ms", 1e-6 * (double)(elapsed.count()));
+
             /* video encoding */
             sws_scale(yuv_sws_ctx, buff_frame->data, buff_frame->linesize, 0, pile_p->height, video_frame->data, video_frame->linesize);
             video_frame->pts = frame_idx;
@@ -363,7 +449,53 @@ int main(int argc, char* argv[]) {
             end = std::chrono::steady_clock::now();
             elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
             SPDLOG_LOGGER_INFO(sys_log, " -- Frame transform encoding done. Time used: {:.3f} ms", 1e-6 * (double)(elapsed.count()));
+
+            /* raw data export */
+            if (sim_p->save_bin) {
+                begin = std::chrono::steady_clock::now();
+                std::string bin_file_path = sim_p->data_path + "bin/" + std::to_string(frame_idx) + ".bin";
+                save_int2bin(pile_p, ctx_host.pile_host, bin_file_path.c_str(), sys_log);
+                end = std::chrono::steady_clock::now();
+                elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
+                SPDLOG_LOGGER_INFO(sys_log, " -- Raw data in bin saved. Time used: {:.3f} ms", 1e-6 * (double)(elapsed.count()));
+            }
+
             /* frame sequence */
+            if (!sim_p->save_seq) {
+                begin = std::chrono::steady_clock::now();
+                if (outseq_pix_format != AV_PIX_FMT_RGB24) {
+                    sws_scale(outseq_sws_ctx, buff_frame->data, buff_frame->linesize, 0, pile_p->height, outseq_frame->data, outseq_frame->linesize);
+                    ret = avcodec_send_frame(outseq_code_ctx, outseq_frame);
+                } else {
+                    ret = avcodec_send_frame(outseq_code_ctx, buff_frame);
+                }
+                if (ret == 0) {
+                    outseq_file_name = sim_p->data_path + "img/frame_" + std::to_string(outframe_seq_idx + 1) + outseq_fmt;
+                    FILE* outseq_file = fopen(outseq_file_name.c_str(), "wb");
+                    if (!outseq_file) {
+                        SPDLOG_LOGGER_ERROR(sys_log, "Could not open file for frame sequence: {}", outseq_file_name);
+                        return -1;
+                    }
+                    ret = avcodec_receive_packet(outseq_code_ctx, outseq_packet);
+                    if (ret == 0) {
+                        memcpy(outseq_buffer, (*outseq_packet).data, (*outseq_packet).size);
+                        fwrite(outseq_buffer, sizeof(uint8_t), (*outseq_packet).size, outseq_file);
+                        outframe_seq_idx ++;
+                    }
+                    fclose(outseq_file);
+                } else {
+                    if (av_strerror(ret, errbuf, sizeof(errbuf)) == 0) {
+                        SPDLOG_LOGGER_ERROR(sys_log, "Failed to send frame to output frame sequence codec! Error code! Error code: {}, error info: {}", ret, errbuf);
+                    } else {
+                        SPDLOG_LOGGER_ERROR(sys_log, "Failed to send frame to output frame sequence codec! Error code! Error code: {}, error info: Unkown", ret);
+                    }
+                    return -1;
+                }
+                av_packet_unref(outseq_packet);
+                end = std::chrono::steady_clock::now();
+                elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
+                SPDLOG_LOGGER_INFO(sys_log, " -- Output frame sequence transform and encoding done. Time used: {:.3f} ms", 1e-6 * (double)(elapsed.count()));
+            }
 
             /* start next timer */
             frame_idx++;
@@ -371,14 +503,15 @@ int main(int argc, char* argv[]) {
         }
     }
     cudaMemcpy(ctx_host.pile_host, ctx_device.pile_device, pile_p->width * pile_p->height * sizeof(int), cudaMemcpyDeviceToHost);
-    std::string data_file_path = sim_p->data_path + "final.bin";
+    std::string data_file_path = sim_p->data_path + "bin/final.bin";
     save_int2bin(pile_p, ctx_host.pile_host, data_file_path.c_str(), sys_log);
     SPDLOG_LOGGER_INFO(sys_log, "Final sandpile data in bin saved in: {}", data_file_path);
     cudaMemcpy(&ctx_host.count, ctx_device.count, 1 * sizeof(unsigned long long int), cudaMemcpyDeviceToHost);
     SPDLOG_LOGGER_INFO(sys_log, "Simulation done. Sandpile collapse count: {}", ctx_host.count);
     end_o = std::chrono::steady_clock::now();
     elapsed_o = std::chrono::duration_cast<std::chrono::nanoseconds>(end_o - begin_o);
-    SPDLOG_LOGGER_INFO(sys_log, ">> Phase[4]: Main process of simulation << done. Time used: {:.3f} ms\n", 1e-6 * (double)(elapsed_o.count()));
+    SPDLOG_LOGGER_INFO(sys_log, ">> Phase[4]: Main process of simulation << done. Time used: {:.3f} ms, {:.3f} frame/ms\n",
+        1e-6 * (double)(elapsed_o.count()), sim_p->max_itr_steps / (1e-6 * (double)(elapsed_o.count())));
 
     /* Phase[5] Finish up of media I/O */
     begin_o = std::chrono::steady_clock::now();
@@ -429,6 +562,38 @@ int main(int argc, char* argv[]) {
     end = std::chrono::steady_clock::now();
     elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
     SPDLOG_LOGGER_INFO(sys_log, "Finish up of video encoding done. Time used: {:.3f} ms\n", 1e-6 * (double)(elapsed.count()));
+
+    /* [5]-finish up of output frame transform and sequence encoding */
+    begin = std::chrono::steady_clock::now();
+    SPDLOG_LOGGER_INFO(sys_log, "Start the finish up of output frame sequence encoding");
+    ret = avcodec_send_frame(outseq_code_ctx, nullptr);
+    if (ret < 0) {
+        if (av_strerror(ret, errbuf, sizeof(errbuf)) == 0) {
+            SPDLOG_LOGGER_ERROR(sys_log, "Could not flush the output frame sequence codec! Error code: {}, error info: {}", ret, errbuf);
+        } else {
+            SPDLOG_LOGGER_ERROR(sys_log, "Could not flush the output frame sequence codec! Error code: {}, error info: Unkown", ret);
+        }
+        return -1;
+    }
+    while (ret >= 0) {
+        ret = avcodec_receive_packet(outseq_code_ctx, outseq_packet);
+        if (ret == 0) {
+            outseq_file_name = sim_p->data_path + "img/frame_" + std::to_string(outframe_seq_idx + 1) + outseq_fmt;
+            FILE* outseq_file = fopen(outseq_file_name.c_str(), "wb");
+            if (!outseq_file) {
+                SPDLOG_LOGGER_ERROR(sys_log, "Could not open file for frame sequence: {}", outseq_file_name);
+                return -1;
+            }
+            memcpy(outseq_buffer, (*outseq_packet).data, (*outseq_packet).size);
+            fwrite(outseq_buffer, sizeof(uint8_t), (*outseq_packet).size, outseq_file);
+            outframe_seq_idx ++;
+            fclose(outseq_file);
+        }
+        av_packet_unref(outseq_packet);
+    }
+    end = std::chrono::steady_clock::now();
+    elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
+    SPDLOG_LOGGER_INFO(sys_log, "Finish up of output frame sequence encoding done. Time used: {:.3f} ms", 1e-6 * (double)(elapsed.count()));
     end_o = std::chrono::steady_clock::now();
     elapsed_o = std::chrono::duration_cast<std::chrono::nanoseconds>(end_o - begin_o);
     SPDLOG_LOGGER_INFO(sys_log, ">> Phase[5]: Finish up of media I/O << done. Time used: {:.3f} ms\n", 1e-6 * (double)(elapsed_o.count()));
@@ -445,6 +610,13 @@ int main(int argc, char* argv[]) {
     sws_freeContext(yuv_sws_ctx);
     av_frame_free(&video_frame);
     av_packet_free(&video_packet);
+    avcodec_free_context(&outseq_code_ctx);
+    av_packet_free(&outseq_packet);
+    av_free(outseq_buffer);
+    if (outseq_pix_format != AV_PIX_FMT_RGB24) {
+        sws_freeContext(outseq_sws_ctx);
+        av_frame_free(&outseq_frame);
+    }
     end = std::chrono::steady_clock::now();
     elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
     SPDLOG_LOGGER_INFO(sys_log, "Freeing space of FFmpeg done. Time used: {:.3f} ms", 1e-6 * (double)(elapsed.count()));

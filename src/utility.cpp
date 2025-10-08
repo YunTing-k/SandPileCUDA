@@ -119,17 +119,23 @@ void config_sim_param(const PileParam *pile_p, SimParam *p, const std::string cf
             SPDLOG_LOGGER_WARN(sys_log, "Invalid max simulation frame amount, reset to {}", p->max_itr_steps);
         }
         p->data_path = cfg.at("data_path");
+        SPDLOG_LOGGER_INFO(sys_log, " -- Output data path: {}", p->data_path);
         p->video_path = cfg.at("video_path");
-        p->outseq_format = (frame_sequence_format)cfg.at("outseq_format");
-        p->sp_rate = cfg.at("sp_rate");
-        SPDLOG_LOGGER_INFO(sys_log, " -- Output frame sequence format: {}", get_frame_sequence_format_name(p->outseq_format));
-        SPDLOG_LOGGER_INFO(sys_log, " -- Output frame sequence sampling gap: {} frame", p->sp_rate);
-        if (p->sp_rate < 1) {
-            p->sp_rate = 10000;
-            SPDLOG_LOGGER_WARN(sys_log, "Invalid output frame sequence sampling gap, reset to {}", p->sp_rate);
-        }
+        SPDLOG_LOGGER_INFO(sys_log, " -- Output video path: {}", p->video_path);
         p->visualize_cuda = cfg.at("visualize_cuda");
         SPDLOG_LOGGER_INFO(sys_log, " -- Visualize by CUDA: {}", p->visualize_cuda ? "True" : "False");
+        p->save_bin = cfg.at("save_bin");
+        SPDLOG_LOGGER_INFO(sys_log, " -- Save the raw binary data: {}", p->save_bin ? "True" : "False");
+        p->outseq_format = (frame_sequence_format)cfg.at("outseq_format");
+        SPDLOG_LOGGER_INFO(sys_log, " -- Output frame sequence format: {}", get_frame_sequence_format_name(p->outseq_format));
+        p->save_seq = cfg.at("save_seq");
+        SPDLOG_LOGGER_INFO(sys_log, " -- Save the output frame sequence: {}", p->save_seq ? "True" : "False");
+        p->sp_rate = cfg.at("sp_rate");
+        SPDLOG_LOGGER_INFO(sys_log, " -- Output frame sampling gap: {} frame", p->sp_rate);
+        if (p->sp_rate < 1) {
+            p->sp_rate = 10000;
+            SPDLOG_LOGGER_WARN(sys_log, "Invalid output frame sampling gap, reset to {}", p->sp_rate);
+        }
         for (int i = 0; i < 6; i++) {
             p->lut_r[i] = 0;
             p->lut_g[i] = 0;

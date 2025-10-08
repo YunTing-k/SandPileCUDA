@@ -33,9 +33,11 @@ typedef struct SimParam {
     int max_itr_steps;                   // max iteration steps
     std::string data_path;               // path of output raw data
     std::string video_path;              // path of output video
-    frame_sequence_format outseq_format; // output frame sequence format
     int sp_rate;                         // sample rate for frame sequence
     bool visualize_cuda;                 // visualize the results by CUDA
+    bool save_bin;                       // save the raw binary data
+    frame_sequence_format outseq_format; // output frame sequence format
+    bool save_seq;                       // save the output frame sequence
     int lut_r[6];                        // color lookup table - R
     int lut_g[6];                        // color lookup table - G
     int lut_b[6];                        // color lookup table - B

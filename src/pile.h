@@ -7,6 +7,7 @@
 #include <cuda_runtime.h>
 #include "utility.h"
 
+void pile_itr(const PileParam *p, int *cur_pile, int *diff_in, int *diff_out, unsigned long long int *count, const logger &sys_log);
 extern "C"
 {
     void call_pile_initialize(const PileParam *p, int *cur_pile);

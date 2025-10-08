@@ -70,6 +70,7 @@ __global__ void pile_itr_tri(int *cur_pile, int *diff_in, int *diff_out, int wid
     int row = blockDim.y * blockIdx.y + threadIdx.y;
     int col = blockDim.x * blockIdx.x + threadIdx.x;
 
+    if (((row + 1) > height) || ((col + 1) > width)) return; // avoid out-of-bound access
     cur_pile[row * width + col] += diff_in[row * width + col];
 
     if (cur_pile[row * width + col] >= 3) {
@@ -114,10 +115,10 @@ __global__ void pile_itr_tri(int *cur_pile, int *diff_in, int *diff_out, int wid
 extern "C" void call_pile_itr_tri(const PileParam *p, int *cur_pile, int *diff_in, int *diff_out, unsigned long long int *count) {
 
     int bk_row, bk_col;
-    bk_col = p->width / 8;
-    bk_row = p->height / 8;
+    bk_col = p->width / 8 + ((p->width % 8) != 0);
+    bk_row = p->height / 4 + ((p->height % 4) != 0);
     dim3 num_block(bk_col, bk_row);
-    dim3 threads_block(8, 8); // x(col) = 8 threads, y(row) = 8 threads
+    dim3 threads_block(8, 4); // x(col) = 8 threads, y(row) = 4 threads
 
     pile_itr_tri<<<num_block, threads_block>>>(cur_pile, diff_in, diff_out, p->width, p->height, count);
 }
@@ -140,6 +141,7 @@ __global__ void pile_itr_quad(int *cur_pile, int *diff_in, int *diff_out, int wi
     int row = blockDim.y * blockIdx.y + threadIdx.y;
     int col = blockDim.x * blockIdx.x + threadIdx.x;
 
+    if (((row + 1) > height) || ((col + 1) > width)) return; // avoid out-of-bound access
     cur_pile[row * width + col] += diff_in[row * width + col];
 
     if (cur_pile[row * width + col] >= 4) {
@@ -175,10 +177,10 @@ __global__ void pile_itr_quad(int *cur_pile, int *diff_in, int *diff_out, int wi
 extern "C" void call_pile_itr_quad(const PileParam *p, int *cur_pile, int *diff_in, int *diff_out, unsigned long long int *count) {
 
     int bk_row, bk_col;
-    bk_col = p->width / 8;
-    bk_row = p->height / 8;
+    bk_col = p->width / 8 + ((p->width % 8) != 0);
+    bk_row = p->height / 4 + ((p->height % 4) != 0);
     dim3 num_block(bk_col, bk_row);
-    dim3 threads_block(8, 8); // x(col) = 8 threads, y(row) = 8 threads
+    dim3 threads_block(8, 4); // x(col) = 8 threads, y(row) = 4 threads
     
     pile_itr_quad<<<num_block, threads_block>>>(cur_pile, diff_in, diff_out, p->width, p->height, count);
 }
@@ -201,6 +203,7 @@ __global__ void pile_itr_hex(int *cur_pile, int *diff_in, int *diff_out, int wid
     int row = blockDim.y * blockIdx.y + threadIdx.y;
     int col = blockDim.x * blockIdx.x + threadIdx.x;
 
+    if (((row + 1) > height) || ((col + 1) > width)) return; // avoid out-of-bound access
     cur_pile[row * width + col] += diff_in[row * width + col];
 
     if (cur_pile[row * width + col] >= 6) {
@@ -262,10 +265,10 @@ __global__ void pile_itr_hex(int *cur_pile, int *diff_in, int *diff_out, int wid
 extern "C" void call_pile_itr_hex(const PileParam *p, int *cur_pile, int *diff_in, int *diff_out, unsigned long long int *count) {
 
     int bk_row, bk_col;
-    bk_col = p->width / 8;
-    bk_row = p->height / 8;
+    bk_col = p->width / 8 + ((p->width % 8) != 0);
+    bk_row = p->height / 4 + ((p->height % 4) != 0);
     dim3 num_block(bk_col, bk_row);
-    dim3 threads_block(8, 8); // x(col) = 8 threads, y(row) = 8 threads
+    dim3 threads_block(8, 4); // x(col) = 8 threads, y(row) = 4 threads
     
     pile_itr_hex<<<num_block, threads_block>>>(cur_pile, diff_in, diff_out, p->width, p->height, count);
 }

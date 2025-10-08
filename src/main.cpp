@@ -13,6 +13,7 @@
 // 2025/03/21     Yu Huang     1.0               First implementation
 // 2025/10/08     Yu Huang     1.1               Remove namespace & Adjust logger
 // 2025/10/08     Yu Huang     1.2               Add sim params
+// 2025/10/08     Yu Huang     1.3               Merge the pile iteration function
 // ---------------------------------------------------------------------------------
 //
 //-FHDR//////////////////////////////////////////////////////////////////////////////
@@ -179,127 +180,81 @@ int main(int argc, char* argv[]) {
     elapsed_o = std::chrono::duration_cast<std::chrono::nanoseconds>(end_o - begin_o);
     SPDLOG_LOGGER_INFO(sys_log, ">> Phase[1]: Read configs and configure simulator << done. Time used: {:.3f} ms\n", 1e-6 * (double)(elapsed_o.count()));
 
-    /* Phase[2]-Preparation before simulation */
+    /* Phase[2]-Preparation of data I/O */
+
+
+    /* Phase[3]-Preparation before simulation */
     SPDLOG_LOGGER_INFO(sys_log, ">> Phase[2]: Preparation before simulation << start");
     begin_o = std::chrono::steady_clock::now();
-    int *cur_pile, *pile_diff1, *pile_diff2;
+    int *pile_device, *pile_diff1, *pile_diff2;
     int *pile_host;
     unsigned long long int *count;
     unsigned long long int count_host = 0;
     bool direction = 1;
 
-    cudaMalloc(&cur_pile, pile_p->width * pile_p->height * sizeof(int));
+    cudaMalloc(&pile_device, pile_p->width * pile_p->height * sizeof(int));
     cudaMalloc(&pile_diff1, pile_p->width * pile_p->height * sizeof(int));
     cudaMalloc(&pile_diff2, pile_p->width * pile_p->height * sizeof(int));
     cudaMalloc(&count, 1 * sizeof(unsigned long long int));
-    cudaMemset(cur_pile, 0, pile_p->width * pile_p->height * sizeof(int));
+    cudaMemset(pile_device, 0, pile_p->width * pile_p->height * sizeof(int));
     cudaMemset(pile_diff1, 0, pile_p->width * pile_p->height * sizeof(int));
     cudaMemset(pile_diff2, 0, pile_p->width * pile_p->height * sizeof(int));
     cudaMemset(count, 0, 1 * sizeof(unsigned long long int));
     pile_host = new int[pile_p->width * pile_p->height];
 
-    call_pile_initialize(pile_p, cur_pile);
-    cudaMemcpy(pile_host, cur_pile, pile_p->width * pile_p->height * sizeof(int), cudaMemcpyDeviceToHost);
+    call_pile_initialize(pile_p, pile_device);
+    cudaMemcpy(pile_host, pile_device, pile_p->width * pile_p->height * sizeof(int), cudaMemcpyDeviceToHost);
     save_int2bin(pile_p, pile_host, "0.bin", sys_log);
     end_o = std::chrono::steady_clock::now();
     elapsed_o = std::chrono::duration_cast<std::chrono::nanoseconds>(end_o - begin_o);
-    SPDLOG_LOGGER_INFO(sys_log, ">> Phase[2]: Preparation before simulation << done. Time used: {:.3f} ms\n", 1e-6 * (double)(elapsed_o.count()));
+    SPDLOG_LOGGER_INFO(sys_log, ">> Phase[3]: Preparation before simulation << done. Time used: {:.3f} ms\n", 1e-6 * (double)(elapsed_o.count()));
 
-    /* Phase[3]-Simulation */
-    switch (pile_p->shape) {
-        case TRIANGLE:
-            for (int i = 0; i < sim_p->max_itr_steps; i++) {
-                begin = std::chrono::steady_clock::now();
-                if (direction) {
-                    cudaMemset(pile_diff2, 0, pile_p->width * pile_p->height * sizeof(int));
-                    call_pile_itr_tri(pile_p, cur_pile, pile_diff1, pile_diff2, count);
-                    direction = !direction;
-                } else {
-                    cudaMemset(pile_diff1, 0, pile_p->width * pile_p->height * sizeof(int));
-                    call_pile_itr_tri(pile_p, cur_pile, pile_diff2, pile_diff1, count);
-                    direction = !direction;
-                }
-                end = std::chrono::steady_clock::now();
-                elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
-                time += (double)(elapsed.count());
-                if ((i + 1) % 10 == 0) {
-                    SPDLOG_LOGGER_INFO(sys_log, "Iteration-{} done. Time used: {:.3f} ms", i + 1, 1e-6 * (double)(elapsed.count()));
-                    SPDLOG_LOGGER_INFO(sys_log, "++ Average Speed: {:.3f} itr/s. Remaining Time: {:.3f} s\n",
-                        (i + 1) / (1e-9 * time),
-                        (sim_p->max_itr_steps - i - 1) * (1e-9 * time) / (i + 1));
-                }
-            }
-            cudaMemcpy(pile_host, cur_pile, pile_p->width * pile_p->height * sizeof(int), cudaMemcpyDeviceToHost);
-            save_int2bin(pile_p, pile_host, "1_tri.bin", sys_log);
-            break;
-        case QUADRILATERAL:
-            for (int i = 0; i < sim_p->max_itr_steps; i++) {
-                begin = std::chrono::steady_clock::now();
-                if (direction) {
-                    cudaMemset(pile_diff2, 0, pile_p->width * pile_p->height * sizeof(int));
-                    call_pile_itr_quad(pile_p, cur_pile, pile_diff1, pile_diff2, count);
-                    direction = !direction;
-                } else {
-                    cudaMemset(pile_diff1, 0, pile_p->width * pile_p->height * sizeof(int));
-                    call_pile_itr_quad(pile_p, cur_pile, pile_diff2, pile_diff1, count);
-                    direction = !direction;
-                }
-                end = std::chrono::steady_clock::now();
-                elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
-                time += (double)(elapsed.count());
-                if ((i + 1) % 10 == 0) {
-                    SPDLOG_LOGGER_INFO(sys_log, "Iteration-{} done. Time used: {:.3f} ms", i + 1, 1e-6 * (double)(elapsed.count()));
-                    SPDLOG_LOGGER_INFO(sys_log, "++ Average Speed: {:.3f} itr/s. Remaining Time: {:.3f} s\n",
-                        (i + 1) / (1e-9 * time),
-                        (sim_p->max_itr_steps - i - 1) * (1e-9 * time) / (i + 1));
-                }
-            }
-            cudaMemcpy(pile_host, cur_pile, pile_p->width * pile_p->height * sizeof(int), cudaMemcpyDeviceToHost);
-            save_int2bin(pile_p, pile_host, "1_quad.bin", sys_log);
-            break;
-        case HEXAGON:
-            for (int i = 0; i < sim_p->max_itr_steps; i++) {
-                begin = std::chrono::steady_clock::now();
-                if (direction) {
-                    cudaMemset(pile_diff2, 0, pile_p->width * pile_p->height * sizeof(int));
-                    call_pile_itr_hex(pile_p, cur_pile, pile_diff1, pile_diff2, count);
-                    direction = !direction;
-                } else {
-                    cudaMemset(pile_diff1, 0, pile_p->width * pile_p->height * sizeof(int));
-                    call_pile_itr_hex(pile_p, cur_pile, pile_diff2, pile_diff1, count);
-                    direction = !direction;
-                }
-                end = std::chrono::steady_clock::now();
-                elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
-                time += (double)(elapsed.count());
-                if ((i + 1) % 10 == 0) {
-                    SPDLOG_LOGGER_INFO(sys_log, "Iteration-{} done. Time used: {:.3f} ms", i + 1, 1e-6 * (double)(elapsed.count()));
-                    SPDLOG_LOGGER_INFO(sys_log, "++ Average Speed: {:.3f} itr/s. Remaining Time: {:.3f} s\n",
-                        (i + 1) / (1e-9 * time),
-                        (sim_p->max_itr_steps - i - 1) * (1e-9 * time) / (i + 1));
-                }
-            }
-            cudaMemcpy(pile_host, cur_pile, pile_p->width * pile_p->height * sizeof(int), cudaMemcpyDeviceToHost);
-            save_int2bin(pile_p, pile_host, "1_hex.bin", sys_log);
-            break;
-        default:
-            SPDLOG_LOGGER_ERROR(sys_log, "Invalid shape parameter!");
-            return -1;
-    }
-    cudaMemcpy(&count_host, count, 1 * sizeof(unsigned long long int), cudaMemcpyDeviceToHost);
-    SPDLOG_LOGGER_INFO(sys_log, "Program done. Sandpile collapse count: {}", count_host);
-
-    /* Phase[5]-Free the all necessary space */
-    SPDLOG_LOGGER_INFO(sys_log, ">> Phase[5]: Free the all necessary space << start");
+    /* Phase[4]-Main process of simulation */
+    SPDLOG_LOGGER_INFO(sys_log, ">> Phase[4]: Main process of simulation << start");
     begin_o = std::chrono::steady_clock::now();
-    cudaFree(cur_pile);
+    for (int i = 0; i < sim_p->max_itr_steps; i++) {
+        begin_f = std::chrono::steady_clock::now();
+        if (direction) {
+            cudaMemset(pile_diff2, 0, pile_p->width * pile_p->height * sizeof(int));
+            pile_itr(pile_p, pile_device, pile_diff1, pile_diff2, count, sys_log);
+            direction = !direction;
+        } else {
+            cudaMemset(pile_diff1, 0, pile_p->width * pile_p->height * sizeof(int));
+            pile_itr(pile_p, pile_device, pile_diff2, pile_diff1, count, sys_log);
+            direction = !direction;
+        }
+        if ((i + 1) % sim_p->sp_rate == 0) {
+            end_f = std::chrono::steady_clock::now();
+            elapsed_f = std::chrono::duration_cast<std::chrono::nanoseconds>(end_f - begin_f);
+            time += (double)(elapsed_f.count());
+            SPDLOG_LOGGER_INFO(sys_log, " -- Iteration-{} done. Time used: {:.3f} ms", i + 1, 1e-6 * (double)(elapsed_f.count()));
+            SPDLOG_LOGGER_INFO(sys_log, "    > Average Speed: {:.3f} itr/s. Remaining Time: {:.3f} s",
+                (i + 1) / (1e-9 * time),
+                (sim_p->max_itr_steps - i - 1) * (1e-9 * time) / (i + 1));
+        }
+    }
+    cudaMemcpy(pile_host, pile_device, pile_p->width * pile_p->height * sizeof(int), cudaMemcpyDeviceToHost);
+    std::string data_file_path = sim_p->data_path + "final.bin";
+    save_int2bin(pile_p, pile_host, data_file_path.c_str(), sys_log);
+    cudaMemcpy(&count_host, count, 1 * sizeof(unsigned long long int), cudaMemcpyDeviceToHost);
+    SPDLOG_LOGGER_INFO(sys_log, "Simulation done. Sandpile collapse count: {}", count_host);
+    end_o = std::chrono::steady_clock::now();
+    elapsed_o = std::chrono::duration_cast<std::chrono::nanoseconds>(end_o - begin_o);
+    SPDLOG_LOGGER_INFO(sys_log, ">> Phase[4]: Main process of simulation << done. Time used: {:.3f} ms\n", 1e-6 * (double)(elapsed_o.count()));
+
+    /* Phase[5] Finish up of media I/O */
+
+    /* Phase[6]-Free the all necessary space */
+    SPDLOG_LOGGER_INFO(sys_log, ">> Phase[6]: Free the all necessary space << start");
+    begin_o = std::chrono::steady_clock::now();
+    cudaFree(pile_device);
     cudaFree(pile_diff1);
     cudaFree(pile_diff2);
     cudaFree(count);
     delete[] pile_host;
     end_o = std::chrono::steady_clock::now();
     elapsed_o = std::chrono::duration_cast<std::chrono::nanoseconds>(end_o - begin_o);
-    SPDLOG_LOGGER_INFO(sys_log, ">> Phase[5]: Free the all necessary space << done. Time used: {:.3f} ms\n", 1e-6 * (double)(elapsed_o.count()));
+    SPDLOG_LOGGER_INFO(sys_log, ">> Phase[6]: Free the all necessary space << done. Time used: {:.3f} ms\n", 1e-6 * (double)(elapsed_o.count()));
 
     /* final finish up */
     print_end_banner(sys_log);

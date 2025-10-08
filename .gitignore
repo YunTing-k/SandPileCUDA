@@ -1,0 +1,9 @@
+/.VSCodeCounter
+/.vscode
+/.idea
+/__pycache__
+/logs/*.txt
+/scripts/
+*.mp4
+*.bin
+*.exe

@@ -15,8 +15,6 @@ extern "C" {
 #include <omp.h>
 #include "utility.h"
 
-using namespace Eigen;
-
 AVFormatContext* open_video(const char* file_name, const logger &sys_log);
 int find_video_stream_idx(const AVFormatContext* video_format_ctx, const logger &sys_log);
 const AVCodec* get_codec_from_stream(const AVFormatContext* in_format_ctx, int in_stream_idx, const logger &sys_log);

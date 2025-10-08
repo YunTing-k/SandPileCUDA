@@ -21,7 +21,7 @@
 
 #define SandPileMajorVersion 1
 #define SandPileMinorVersion 1
-#define SandPileUpdateVersion 2
+#define SandPileUpdateVersion 3
 
 typedef struct SandPileVersion {
     int MajorVersion;

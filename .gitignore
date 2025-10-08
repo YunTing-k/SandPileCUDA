@@ -8,3 +8,6 @@
 /video/*
 *.bin
 *.exe
+*.exp
+*.lib
+*.obj

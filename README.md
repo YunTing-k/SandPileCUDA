@@ -1,4 +1,4 @@
-# SandPileCUDA: SandPile fractal simulator with CUDA
+# SandPileCUDA: SandPile Fractal Simulator with CUDA
 
 ## Introduction
 
@@ -62,8 +62,8 @@ Where `<link_type>` is:
 - `1` for **Dynamic** link
 - Any other value for **Static** link
 
-### Compiled Program by Author0
-You can also download the compiled version of program provided by author.
+### Compiled Program by Author
+You can also download the static-linked compiled version of program provided by author (With all necessary libs). However, you must also follow the license and policy of the corresponding libs.
 
 ### Library Paths (Modify in script if needed)
 ```bat
@@ -75,9 +75,12 @@ FFMPEG_LIB=C:\Users\admin\Desktop\C++File\Libs\ffmpeg\lib
 EIGEN_INCLUDE=C:\Users\admin\Desktop\C++File\Libs\eigen
 MIMALLOC_INCLUDE=C:\Users\admin\Desktop\C++File\Libs\mimalloc\include
 MIMALLOC_LIB=C:\Users\admin\Desktop\C++File\Libs\mimalloc\out\msvc-x64\Release
-CUDA_INCLUDE="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.3\include"
-CUDA_LIB="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.3\lib\x64"
+CUDA_INCLUDE=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.3\include
+CUDA_LIB=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.3\lib\x64
 ```
+---
+**Note**:
+`MKL_COMPILER_LIB`=`...Intel\oneAPI\compiler\2025.1\lib` is used for static link, because openMP is used by the program. **This lib can be ignored** if you don't have Intel oneAPI installed or don't want to fully static link. For more details please check the compile script.
 
 ### Output
 - Executable: `sandpile.exe` in project root
@@ -85,7 +88,7 @@ CUDA_LIB="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.3\lib\x64"
 
 ---
 
-**Note**: Remember to:
+**Note**: Remember to
 1. Replace all **absolute paths** with your actual library locations
 2. Verify CUDA version matches your installed toolkit
 3. Ensure all required DLLs (FFmpeg, mimalloc) are in PATH or executable directory
@@ -98,7 +101,7 @@ sandpile.exe <config_path>
 ```
 Where `<config_path>` is:
 - The path of the configuration files in json format
-- e.g., `.\config\`
+- e.g., `.\config\` (Use paths with slashes `\` in the end)
 
 ## Parameters
 The simulation behavior is controlled by a JSON configuration file with the following parameters:
@@ -111,7 +114,7 @@ The simulation behavior is controlled by a JSON configuration file with the foll
 | `height`      | int  | `1~INT_MAX`                 | 1080     | Grid height in cells (must be ≥ 2)                                          |
 | `ini_sand_num`| int  | `1~INT_MAX`             | 12000000   | Initial sand grains placed at center cell                                   |
 
-### Pile Parameter (pile_param.json)
+### Pile Parameter (sim_param.json)
 
 | JSON Key         | Type       | Allowed Values / Constraints                      | Example           | Description                                                                 |
 |------------------|------------|--------------------------------------------------|-------------------|-----------------------------------------------------------------------------|
@@ -167,20 +170,21 @@ The simulation behavior is controlled by a JSON configuration file with the foll
      }
      ```
    - Set `thread_count=0` for optimal performance
+   - The format of the video is decided by the `video_path` in sim_param.json
 
 3. **Path Specifications**:
-   - Use absolute paths with forward slashes (`/`)
+   - Use absolute paths with forward slashes `/`
    - Include trailing slash for directories:
      ```json
-     "data_path": "C:/path/to/data/",
-     "video_path": "C:/path/to/video.mp4"
+     "data_path": "C:/any_path/data/",
+     "video_path": "C:/any_path/output.mp4"
      ```
 
 4. **Format Mapping**:
    ```cpp
-   0 → SEQUENCE_JPEG
-   1 → SEQUENCE_PNG   // Default
-   2 → SEQUENCE_TIFF
-   3 → SEQUENCE_BMP
-   4 → SEQUENCE_JPEG2000
+   outseq_format = 0 → SEQUENCE_JPEG
+   outseq_format = 1 → SEQUENCE_PNG   // Default
+   outseq_format = 2 → SEQUENCE_TIFF
+   outseq_format = 3 → SEQUENCE_BMP
+   outseq_format = 4 → SEQUENCE_JPEG2000
    ```

@@ -75,9 +75,9 @@ set CUDA_LIB=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.3\lib\x64
     /link -libpath:"%MIMALLOC_LIB%" mimalloc.dll.lib ^
     -libpath:"%SPDLOG_LIB%" spdlog.lib ^
     -libpath:"%FFMPEG_LIB%" avcodec.lib avdevice.lib avfilter.lib avformat.lib avutil.lib swresample.lib swscale.lib ^
-    :: delete this ↓ line if you don't have Intel oneAPI installed or don't want to fully static link
     -libpath:"%MKL_COMPILER_LIB%" libiomp5md.lib ^
     -libpath:"%CUDA_LIB%" %CUDA_LIB_FILE%
+    :: delete "-libpath:"%MKL_COMPILER_LIB%" libiomp5md.lib ^" if you don't have Intel oneAPI installed or don't want to fully static link
     echo [make]: msvc cuda version build done
     goto :clean
 

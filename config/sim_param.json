@@ -1,10 +1,11 @@
 {
+    "max_threads": 20,
     "max_itr_steps": 20000,
     "data_path": "C:/Users/12416/Desktop/C++File/Project/SandPile/data/",
     "video_path": "C:/Users/12416/Desktop/C++File/Project/SandPile/video/output.mp4",
     "sp_rate": 10000,
     "visualize_cuda": true,
-    "save_bin": true,
+    "save_bin": false,
     "outseq_format": 1,
     "save_seq": true,
     "lut_r1": [182, 240, 247],

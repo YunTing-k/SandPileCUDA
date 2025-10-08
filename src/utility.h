@@ -20,7 +20,7 @@
 #include "sim_param.h"
 
 #define SandPileMajorVersion 1
-#define SandPileMinorVersion 0
+#define SandPileMinorVersion 1
 #define SandPileUpdateVersion 0
 
 typedef struct SandPileVersion {

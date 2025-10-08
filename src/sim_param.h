@@ -30,6 +30,7 @@ enum frame_sequence_format {
 
 /* Struct of parameters */
 typedef struct SimParam {
+    int max_threads;                     // max thread number
     int max_itr_steps;                   // max iteration steps
     std::string data_path;               // path of output raw data
     std::string video_path;              // path of output video

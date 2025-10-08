@@ -341,6 +341,20 @@ int main(int argc, char* argv[]) {
     /* Phase[3]-Preparation before simulation */
     SPDLOG_LOGGER_INFO(sys_log, ">> Phase[3]: Preparation before simulation << start");
     begin_o = std::chrono::steady_clock::now();
+
+    Eigen::initParallel();
+    Eigen::setNbThreads(sim_p->max_threads);
+    omp_set_num_threads(sim_p->max_threads);
+    SPDLOG_LOGGER_DEBUG(sys_log, "Eigen configured with using {} threads", Eigen::nbThreads());
+    #pragma omp parallel
+    {
+        #pragma omp single
+        {
+            SPDLOG_LOGGER_DEBUG(sys_log, "OpenMP configured with using {} threads", omp_get_num_threads());
+        }
+    }
+    SPDLOG_LOGGER_DEBUG(sys_log, "OpenMP nested: {}", omp_get_nested());
+
     SandPileContextHost ctx_host;
     SandPileContextDevice ctx_device;
     bool direction = 1;
@@ -448,7 +462,7 @@ int main(int argc, char* argv[]) {
             }
             end = std::chrono::steady_clock::now();
             elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
-            SPDLOG_LOGGER_INFO(sys_log, " -- Frame transform encoding done. Time used: {:.3f} ms", 1e-6 * (double)(elapsed.count()));
+            SPDLOG_LOGGER_INFO(sys_log, " -- Frame encoding done. Time used: {:.3f} ms", 1e-6 * (double)(elapsed.count()));
 
             /* raw data export */
             if (sim_p->save_bin) {

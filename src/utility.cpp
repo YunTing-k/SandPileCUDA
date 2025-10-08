@@ -112,6 +112,12 @@ void config_sim_param(const PileParam *pile_p, SimParam *p, const std::string cf
     cfg = json::parse(file);
 
     try {
+        p->max_threads = cfg.at("max_threads");
+        SPDLOG_LOGGER_INFO(sys_log, " -- Max thread number: {}", p->max_threads);
+        if (p->max_threads <= 0) {
+            p->max_threads = 8;
+            SPDLOG_LOGGER_WARN(sys_log, "Invalid max thread number, reset to {}", p->max_threads);
+        }
         p->max_itr_steps = cfg.at("max_itr_steps");
         SPDLOG_LOGGER_INFO(sys_log, " -- Max simulation steps: {}", p->max_itr_steps);
         if (p->max_itr_steps <= 0) {

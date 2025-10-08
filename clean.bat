@@ -4,7 +4,7 @@
 :: Coding: UTF-8
 :: Create Date: 2025.5.28
 :: Description: 
-:: Bat for clear data for TECoSim
+:: Bat for clear data for SandPile
 ::
 :: Revision:
 :: ---------------------------------------------------------------------------------
@@ -19,6 +19,7 @@
 SETLOCAL
 
 set DATA_PATH=.\data
+set VIDEO_PATH=.\video
 
 if "%1" == "1" (
     goto :clean
@@ -28,6 +29,13 @@ if "%1" == "1" (
 
 :clean
     del /s /q %DATA_PATH%\*.bin
+    del /s /q %DATA_PATH%\*.jpg
+    del /s /q %DATA_PATH%\*.png
+    del /s /q %DATA_PATH%\*.tiff
+    del /s /q %DATA_PATH%\*.bmp
+    del /s /q %DATA_PATH%\*.jp2
+    del /s /q %VIDEO_PATH%\
+
     echo [clean]: all files clean done
     goto :end
 
